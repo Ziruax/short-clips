@@ -88,7 +88,8 @@ def download_youtube_video(url, output_dir):
             st.warning("Previously downloaded video path not found, re-downloading.")
 
     st.info(f"Preparing to download YouTube video: {url}")
-    
+    progress_bar_yt = st.progress(0.0, text="Initializing download...") # Initialize progress bar
+
     # Attempt to get video info first to make a cleaner filename
     try:
         with yt_dlp.YoutubeDL({'quiet': True, 'noplaylist': True, 'extract_flat': True}) as ydl_info:
@@ -102,8 +103,7 @@ def download_youtube_video(url, output_dir):
         base_filename = f"youtube_video_{uuid.uuid4().hex[:8]}.mp4" # Fallback unique name
 
     output_path = os.path.join(output_dir, base_filename)
-    
-    # Ensure unique filename if it somehow still collides (should be rare with title/uuid)
+
     counter = 0
     original_output_path = output_path
     while os.path.exists(output_path):
@@ -111,40 +111,68 @@ def download_youtube_video(url, output_dir):
         name, ext = os.path.splitext(original_output_path)
         output_path = f"{name}_{counter}{ext}"
 
+    def yt_progress_hook(d):
+        if d['status'] == 'downloading':
+            # _percent_str is like ' 50.6%' or '100.0%'
+            # _total_bytes_str might be present for total size
+            # _downloaded_bytes_str for current downloaded
+            percent_str = d.get('_percent_str', '0%')
+            # Clean up the string: remove percentage, strip whitespace
+            try:
+                # Convert to float and divide by 100 for st.progress
+                progress_value = float(percent_str.replace('%', '').strip()) / 100.0
+                # Ensure it's within [0.0, 1.0]
+                progress_value = max(0.0, min(1.0, progress_value))
+                
+                # Get eta string if available
+                eta_str = d.get('_eta_str', '')
+                speed_str = d.get('_speed_str', '')
+                
+                progress_text = f"Downloading: {percent_str.strip()} complete"
+                if speed_str:
+                    progress_text += f" at {speed_str.strip()}"
+                if eta_str:
+                    progress_text += f" (ETA: {eta_str.strip()})"
+                
+                progress_bar_yt.progress(progress_value, text=progress_text)
+            except ValueError:
+                # Handle cases where conversion might fail, though unlikely with _percent_str
+                progress_bar_yt.progress(0.0, text=f"Processing download: {percent_str.strip()}")
+        elif d['status'] == 'finished':
+            progress_bar_yt.progress(1.0, text="Download finished. Processing...")
+        elif d['status'] == 'error':
+            progress_bar_yt.progress(0.0, text="Error during download.")
+
+
     ydl_opts = {
         'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/mp4[height<=1080]/best[height<=1080]',
         'outtmpl': output_path,
         'noplaylist': True,
-        'quiet': False, # Show some progress
-        'progress_hooks': [lambda d: st.progress(d.get('_percent_str', '0%').replace('%','')) if d['status'] == 'downloading' else None],
+        'quiet': True, # Set to True if you fully rely on the hook for visual feedback
+        'progress_hooks': [yt_progress_hook],
         'merge_output_format': 'mp4',
-        'postprocessors': [{ # Ensure audio is AAC for broader compatibility
+        'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'aac',
         }],
+        # 'verbose': True, # Uncomment for debugging yt-dlp itself
     }
     try:
-        with st.spinner(f"Downloading with yt-dlp to {os.path.basename(output_path)}..."):
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+        # Using a spinner here might be redundant if the progress bar updates quickly
+        # with st.spinner(f"Downloading with yt-dlp to {os.path.basename(output_path)}..."):
+        st.write(f"Starting download to: {os.path.basename(output_path)}") # Initial message
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        # The 'finished' status in the hook should update the bar to 1.0
         st.success(f"YouTube video downloaded: {os.path.basename(output_path)}")
         st.session_state.downloaded_yt_info = {'url': url, 'path': output_path, 'title': video_title if 'video_title' in locals() else 'YouTube Video'}
+        if progress_bar_yt: progress_bar_yt.empty() # Clear the progress bar after success
         return output_path
     except Exception as e:
-        st.error(f"Error downloading YouTube video: {e}")
+        st.error(f"Error downloading YouTube video: {e}") # This is where your original error was caught
+        if progress_bar_yt: progress_bar_yt.empty() # Clear progress bar on error
         return None
-
-def extract_audio_from_video(video_path, audio_output_path):
-    try:
-        st.info(f"Extracting audio from {os.path.basename(video_path)}...")
-        with VideoFileClip(video_path) as video_clip:
-            video_clip.audio.write_audiofile(audio_output_path, codec='pcm_s16le', fps=16000, logger=None)
-        st.success(f"Audio extracted: {os.path.basename(audio_output_path)}")
-        return audio_output_path
-    except Exception as e:
-        st.error(f"Error extracting audio: {e}")
-        return None
-
+        
 def transcribe_audio_with_whisper(audio_path, whisper_model):
     if not whisper_model:
         st.error("Whisper model not loaded. Cannot transcribe.")
