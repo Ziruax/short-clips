@@ -1,4 +1,4 @@
-# Base Python image (Python 3.10 is a good choice)
+# Base Python image (Python 3.10 is a good choice and very stable)
 FROM python:3.10-slim
 
 # Set working directory
@@ -40,9 +40,11 @@ COPY --chown=appuser:appuser requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# === DEBUGGING STEP: Check if moviepy is importable ===
+# DEBUGGING STEP: Check if moviepy is importable (keep this for now)
 RUN python -c "import moviepy; print(f'Successfully imported moviepy version: {moviepy.__version__}')"
-# ======================================================
+# DEBUGGING STEP: Check if torch is importable (add this)
+RUN python -c "import torch; print(f'Successfully imported torch version: {torch.__version__}'); print(f'Torch CUDA available: {torch.cuda.is_available()}')"
+
 
 # Copy the Streamlit application code as the appuser
 COPY --chown=appuser:appuser app.py ./
