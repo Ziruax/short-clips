@@ -1,0 +1,11 @@
+streamlit>=1.28.0 # Specify a recent stable version
+faster-whisper>=0.10.0
+yt-dlp>=2023.11.16
+moviepy>=1.0.3
+opencv-python-headless>=4.8.0
+librosa>=0.10.0
+numpy>=1.23.0
+vaderSentiment>=3.3.2
+torch --index-url https://download.pytorch.org/whl/cpu
+torchaudio --index-url https://download.pytorch.org/whl/cpu
+Jinja2>=3.1.0 # Often a hidden dependency, good to include
